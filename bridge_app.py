@@ -160,3 +160,28 @@ with st.sidebar.expander("ℹ️ About Hybrid Mode"):
     st.write("""
     This system combines **AI Detection** from Point Cloud data with **Human Expertise** for final verification.
     """)
+# --- 5. EXPORT DATA SECTION (SIDEBAR) ---
+st.sidebar.markdown("---")
+st.sidebar.header("📥 Report Management")
+
+# ตรวจสอบว่ามีข้อมูลบันทึกไว้หรือยัง
+if len(st.session_state.results) > 0:
+    # แปลงข้อมูลในหน่วยความจำให้เป็นตาราง (DataFrame)
+    df_export = pd.DataFrame(st.session_state.results)
+    
+    # แสดงตัวอย่างข้อมูลล่าสุด (Optional)
+    st.sidebar.write(f"✅ Recorded: {len(df_export)} items")
+    
+    # แปลงเป็นไฟล์ CSV
+    csv_data = df_export.to_csv(index=False).encode('utf-8')
+    
+    # สร้างปุ่ม Download
+    st.sidebar.download_button(
+        label="💾 Download CSV Report",
+        data=csv_data,
+        file_name=f"Bridge_Inspection_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv",
+        help="Click to save the inspection data to your device."
+    )
+else:
+    st.sidebar.warning("⚠️ No inspection data yet.")
