@@ -152,6 +152,8 @@ if st.session_state.idx >= len(mock_data):
     if st.button("Restart"): st.session_state.idx=0; st.session_state.results=[]; st.rerun()
     st.stop()
 
+# ... (ส่วนบนปล่อยไว้เหมือนเดิม เริ่มแก้ตรง Load Data ลงไป) ...
+
 # Load Data
 item = mock_data[st.session_state.idx]
 X, Y, Z, ai_depth, source = get_bridge_data(uploaded_file, item)
@@ -159,5 +161,81 @@ X, Y, Z, ai_depth, source = get_bridge_data(uploaded_file, item)
 # Calculate Hybrid Rating
 doh, cv, w, urgency, action, css = calculate_hybrid_assessment(item['type'], ai_depth, item['comp'])
 
-# Layout
-col_viz
+# --- LAYOUT DEFINITION (จุดที่ Error) ---
+# ต้องประกาศตัวแปร col_viz และ col_data ก่อนเรียกใช้
+col_viz, col_data = st.columns([1.8, 1]) 
+
+with col_viz:
+    st.subheader(f"📍 {item['comp']} ({source})")
+    
+    # 1. SECTION SLIDER & 2D GRAPH
+    st.markdown("##### ✂️ Cross-Section Analyzer")
+    # ป้องกัน Error กรณี X เป็น None หรือว่าง
+    if len(X) > 0:
+        min_x, max_x = float(np.min(X)), float(np.max(X))
+        slice_pos = st.slider("Station (X-Axis)", min_x, max_x, (min_x+max_x)/2)
+        
+        mask_slice = np.abs(X - slice_pos) < 0.2
+        y_slice = Y[mask_slice]; z_slice = Z[mask_slice]
+        
+        fig_sec = go.Figure(go.Scatter(x=y_slice, y=z_slice, mode='markers', marker=dict(size=4, color=z_slice, colorscale='Jet_r')))
+        fig_sec.update_layout(template='plotly_white', height=250, title=f"Section at X={slice_pos:.1f}m", yaxis_title="Z", xaxis_title="Y", margin=dict(t=30,b=0,l=0,r=0))
+        st.plotly_chart(fig_sec, use_container_width=True)
+
+        # 2. 3D VISUALIZATION
+        fig_3d = go.Figure(data=[go.Scatter3d(x=X, y=Y, z=Z, mode='markers', marker=dict(size=2, color=Z, colorscale='Jet_r'))])
+        # Cutting Plane
+        py, pz = np.meshgrid(np.linspace(np.min(Y), np.max(Y), 10), np.linspace(np.min(Z), np.max(Z), 10))
+        px = np.full_like(py, slice_pos)
+        fig_3d.add_trace(go.Surface(x=px, y=py, z=pz, opacity=0.3, colorscale='Reds', showscale=False))
+        
+        fig_3d.update_layout(template='plotly_white', height=450, scene=dict(aspectmode='data'), margin=dict(t=0,b=0,l=0,r=0))
+        st.plotly_chart(fig_3d, use_container_width=True)
+    else:
+        st.warning("No Data points found to visualize.")
+
+with col_data:
+    st.markdown("### 📊 Assessment")
+    
+    # DOH CARD
+    st.markdown(f"""
+    <div style="border:1px solid #ddd; padding:10px; border-radius:5px;">
+        <small>Stage 1: Detection (DOH)</small><br>
+        Measured: <b>{ai_depth*1000:.1f} mm</b><br>
+        Rating: <b>{doh} / 5</b>
+    </div>
+    <div class="arrow-box">⬇️ Invert Mapping ⬇️</div>
+    """, unsafe_allow_html=True)
+    
+    # PELLEGRINI CARD
+    st.markdown(f"""
+    <div style="border:1px solid #000080; padding:10px; border-radius:5px; background-color:#f0f4ff;">
+        <small>Stage 3: Management (Pellegrini)</small><br>
+        CV Score: <b>{cv}</b> (1=Good, 5=Fail)<br>
+        Weight: <b>x{w}</b> ({item['comp']})<br>
+        <hr style="margin:5px 0">
+        Priority Score: <b>{cv*w:.1f}</b>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # FINAL ACTION
+    st.markdown(f"""
+    <div style="margin-top:15px; text-align:center;">
+        <span class="{css}">{urgency}</span><br>
+        <h4>{action}</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    with st.form("verify"):
+        st.write("---")
+        v_type = st.selectbox("Type", ["Spalling", "Crack", "Corrosion", "No Defect"], index=["Spalling", "Crack", "Corrosion", "No Defect"].index(item['type']))
+        v_depth = st.number_input("Confirmed Depth (m)", value=float(ai_depth), format="%.3f")
+        note = st.text_area("Note")
+        
+        if st.form_submit_button("💾 Save & Next", type="primary"):
+            st.session_state.results.append({
+                "id":item['id'], "comp":item['comp'], "doh":doh, "cv":cv, "urgency":urgency, "note":note,
+                "timestamp":datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.session_state.idx += 1
+            st.rerun()
