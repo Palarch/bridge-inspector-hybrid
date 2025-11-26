@@ -6,7 +6,7 @@ import random
 from datetime import datetime
 
 # --- 1. CONFIG & CSS ---
-st.set_page_config(page_title="Hybrid Bridge Inspector v6.2 (Final)", layout="wide")
+st.set_page_config(page_title="Hybrid Bridge Inspector v6.3", layout="wide")
 
 st.markdown("""
 <style>
@@ -21,7 +21,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. BRIDGE DATA SCHEMA (DATABASE) ---
+# --- 2. BRIDGE DATA SCHEMA ---
 BRIDGE_SCHEMA = {
     "Superstructure": {
         "Deck": {"name_th": "พื้นสะพาน", "defects": ["Cracking", "Scaling", "Delamination", "Spalling", "Efflorescence", "Honeycomb", "Reinforcement Corrosion", "Pop-out", "Wear", "Collision Damage"]},
@@ -41,19 +41,17 @@ BRIDGE_SCHEMA = {
     }
 }
 
-# --- 3. HYBRID LOGIC ENGINE (Standard Compliance) ---
+# --- 3. HYBRID LOGIC ENGINE ---
 def calculate_hybrid_assessment(defect_type, measured_val, component_name):
-    # STAGE 1: DETECTION (DOH Scale 5-0)
-    doh_rating = 5 # Default Good
+    doh_rating = 5 
     
-    # Logic การประเมินความรุนแรงตามประเภทความเสียหาย
     if "Crack" in defect_type:
-        if measured_val > 0.005: doh_rating = 1      # >5mm Critical
-        elif measured_val > 0.002: doh_rating = 2    # >2mm Serious
-        elif measured_val > 0.0005: doh_rating = 3   # >0.5mm Poor
+        if measured_val > 0.005: doh_rating = 1      
+        elif measured_val > 0.002: doh_rating = 2    
+        elif measured_val > 0.0005: doh_rating = 3   
         elif measured_val > 0: doh_rating = 4
     elif any(x in defect_type for x in ["Spalling", "Scaling", "Honeycomb", "Potholing", "Scour"]):
-        if measured_val > 0.15: doh_rating = 1       # >15cm Critical
+        if measured_val > 0.15: doh_rating = 1       
         elif measured_val > 0.10: doh_rating = 2
         elif measured_val > 0.05: doh_rating = 3
         elif measured_val > 0: doh_rating = 4
@@ -68,11 +66,9 @@ def calculate_hybrid_assessment(defect_type, measured_val, component_name):
 
     if defect_type == "No Defect": doh_rating = 5
 
-    # STAGE 2: MAPPING (Invert Scale)
     mapping_table = {5:1, 4:2, 3:3, 2:4, 1:5, 0:5}
     cv_score = mapping_table.get(doh_rating, 1)
 
-    # STAGE 3: EVALUATION (Pellegrini Weighting)
     weight = 1.0
     primary_comps = ["Girder", "Pier & Pier Wall", "Cap Beam", "Footing", "Bearing"]
     if any(p in component_name for p in primary_comps):
@@ -80,7 +76,6 @@ def calculate_hybrid_assessment(defect_type, measured_val, component_name):
     
     priority_score = cv_score * weight
     
-    # แปลผล Urgency
     if priority_score >= 6.0:
         return doh_rating, cv_score, weight, "Urgency 1 (High)", "ซ่อมทันที (Repair Immediately)", "urgency-1"
     elif priority_score >= 3.0:
@@ -88,16 +83,13 @@ def calculate_hybrid_assessment(defect_type, measured_val, component_name):
     else:
         return doh_rating, cv_score, weight, "Urgency 3 (Low)", "เฝ้าระวัง (Monitor)", "urgency-3"
 
-# --- 4. STRUCTURE GENERATOR (Volumetric Lite) ---
+# --- 4. STRUCTURE GENERATOR ---
 def generate_complex_structure(defect_type, component_name):
     points_list = []
     
-    # สร้างก้อนจุด (Optimized Density)
     def add_dense_block(x_lim, y_lim, z_lim, density=400): 
         vol = (x_lim[1]-x_lim[0]) * (y_lim[1]-y_lim[0]) * (z_lim[1]-z_lim[0])
         n_points = int(density * vol)
-        
-        # Safety Cap ป้องกัน Browser ค้าง
         if n_points > 4000: n_points = 4000
         if n_points < 200: n_points = 200
         
@@ -105,7 +97,6 @@ def generate_complex_structure(defect_type, component_name):
         yy = np.random.uniform(y_lim[0], y_lim[1], n_points)
         zz = np.random.uniform(z_lim[0], z_lim[1], n_points)
         
-        # เพิ่มโครงลวด (Wireframe look)
         xe = np.linspace(x_lim[0], x_lim[1], 8)
         ye = np.linspace(y_lim[0], y_lim[1], 8)
         Xg, Yg = np.meshgrid(xe, ye)
@@ -116,23 +107,21 @@ def generate_complex_structure(defect_type, component_name):
     L = 12.0; W = 8.0
     z_deck_bot = -0.3; z_girder_bot = -1.5; z_cap_bot = -2.5; z_pier_bot = -6.0; z_foot_bot = -7.0
 
-    # Build Geometry
     add_dense_block([0, L], [0, W], [z_deck_bot, 0], density=600) # Deck
     for y in [2.0, 4.0, 6.0]:
         add_dense_block([0, L], [y-0.3, y+0.3], [z_girder_bot, z_deck_bot], density=500) # Girder
     
     for sx in [2.0, 10.0]:
         add_dense_block([sx-0.6, sx+0.6], [0.5, W-0.5], [z_cap_bot, -1.5], density=600) # Cap Beam
-        for by in [2.0, 4.0, 6.0]: # Bearings
-             add_dense_block([sx-0.2, sx+0.2], [by-0.2, by+0.2], [-1.5, -1.4], density=800)
-        for py in [2.5, 5.5]: # Piers
-            add_dense_block([sx-0.4, sx+0.4], [py-0.4, py+0.4], [z_pier_bot, z_cap_bot], density=500)
-            add_dense_block([sx-1.0, sx+1.0], [py-1.0, py+1.0], [z_foot_bot, z_pier_bot], density=300)
+        for by in [2.0, 4.0, 6.0]: 
+             add_dense_block([sx-0.2, sx+0.2], [by-0.2, by+0.2], [-1.5, -1.4], density=800) # Bearing
+        for py in [2.5, 5.5]: 
+            add_dense_block([sx-0.4, sx+0.4], [py-0.4, py+0.4], [z_pier_bot, z_cap_bot], density=500) # Pier
+            add_dense_block([sx-1.0, sx+1.0], [py-1.0, py+1.0], [z_foot_bot, z_pier_bot], density=300) # Footing
 
     full = np.concatenate(points_list, axis=0)
     X, Y, Z = full[:,0], full[:,1], full[:,2]
     
-    # Simulate Defect Visuals
     Z += np.random.normal(0, 0.005, size=Z.shape)
     ai_depth = 0.0
     
@@ -154,7 +143,7 @@ def generate_complex_structure(defect_type, component_name):
 
     return X, Y, Z, ai_depth
 
-# --- 5. DATA GENERATOR (Mock Batch) ---
+# --- 5. DATA GENERATOR ---
 def generate_mock_batch():
     batch = []
     for _ in range(5):
@@ -177,21 +166,19 @@ def generate_mock_batch():
         })
     return batch
 
-# --- 6. DATA HANDLER (File vs Mock) ---
+# --- 6. DATA HANDLER ---
 def get_inspection_data(uploaded_file, mock_item):
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
             df.columns = [c.lower() for c in df.columns]
             if {'x','y','z'}.issubset(df.columns):
-                # Downsampling for performance
                 if len(df) > 25000: df = df.sample(25000)
                 X, Y, Z = df['x'].values, df['y'].values, df['z'].values
                 ai_d = abs(np.min(Z) - np.mean(Z)) if len(Z)>0 else 0
                 return X, Y, Z, ai_d, "Real File Uploaded"
         except: pass
     
-    # Fallback
     X, Y, Z, ai_depth = generate_complex_structure(mock_item['type'], mock_item['comp'])
     return X, Y, Z, item['depth'], "Mockup Data"
 
@@ -200,7 +187,6 @@ if 'idx' not in st.session_state: st.session_state.idx = 0
 if 'results' not in st.session_state: st.session_state.results = []
 if 'mock_data' not in st.session_state: st.session_state.mock_data = generate_mock_batch()
 
-# SIDEBAR
 st.sidebar.title("🛠️ Control Panel")
 uploaded_file = st.sidebar.file_uploader("Upload Point Cloud (.csv)", type=['csv'])
 if st.sidebar.button("🔄 Generate New Batch"):
@@ -208,26 +194,17 @@ if st.sidebar.button("🔄 Generate New Batch"):
     st.session_state.idx = 0
     st.rerun()
 
-# Sidebar Download (Backup) - Fixed Encoding
 if st.session_state.results:
-    st.sidebar.download_button(
-        "📥 Backup Data (CSV)", 
-        pd.DataFrame(st.session_state.results).to_csv(index=False).encode('utf-8-sig'), 
-        "backup_data.csv", 
-        "text/csv"
-    )
+    st.sidebar.download_button("📥 Backup Data (CSV)", pd.DataFrame(st.session_state.results).to_csv(index=False).encode('utf-8-sig'), "backup_data.csv", "text/csv")
 
-# MAIN CONTENT
-st.title("🌉 Hybrid Bridge Inspector v6.2")
-st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: Full Schema + Real File Support")
+st.title("🌉 Hybrid Bridge Inspector v6.3 (Final + Colorbar)")
+st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: Full Schema + Colorbar")
 
-# End of Batch Screen
 if st.session_state.idx >= len(st.session_state.mock_data):
     st.success("✅ All items in batch inspected!")
     df_res = pd.DataFrame(st.session_state.results)
     st.dataframe(df_res)
     
-    # Main Download Button - Fixed Encoding
     col1, col2 = st.columns([1, 1])
     with col1:
         st.download_button(
@@ -244,19 +221,16 @@ if st.session_state.idx >= len(st.session_state.mock_data):
             st.rerun()
     st.stop()
 
-# Process Item
 item = st.session_state.mock_data[st.session_state.idx]
 X, Y, Z, ai_depth, source_txt = get_inspection_data(uploaded_file, item)
 doh, cv, w, urgency, action, css = calculate_hybrid_assessment(item['type'], ai_depth, item['comp'])
 
-# --- LAYOUT (Fixed) ---
 col_viz, col_data = st.columns([1.8, 1])
 
 with col_viz:
     st.subheader(f"📍 {item['comp']} ({item['comp_th']})")
     st.caption(f"Defect: {item['type']} | Source: {source_txt}")
     
-    # 1. SLIDER & 2D (Fixed Syntax)
     st.markdown("##### ✂️ Cross-Section Analyzer")
     if len(X) > 0:
         slice_pos = st.slider("X-Axis Cut", float(np.min(X)), float(np.max(X)), float(np.mean(X)))
@@ -266,10 +240,20 @@ with col_viz:
         fig_sec.update_layout(template='plotly_white', height=250, title=f"Section at X={slice_pos:.1f}m", margin=dict(t=30,b=0,l=0,r=0))
         st.plotly_chart(fig_sec, use_container_width=True)
 
-        # 2. 3D GRAPH
-        fig_3d = go.Figure(data=[go.Scatter3d(x=X, y=Y, z=Z, mode='markers', marker=dict(size=3, color=Z, colorscale='Jet_r', opacity=0.7))])
+        # --- 3D GRAPH (With Vertical Colorbar) ---
+        fig_3d = go.Figure(data=[go.Scatter3d(
+            x=X, y=Y, z=Z, 
+            mode='markers', 
+            marker=dict(
+                size=3, 
+                color=Z, 
+                colorscale='Jet_r', 
+                opacity=0.7,
+                showscale=True, # Show Colorbar
+                colorbar=dict(title="Elevation (m)", thickness=15, x=1.0) # Vertical Bar Settings
+            )
+        )])
         
-        # Cutting Plane Visualization
         py, pz = np.meshgrid(np.linspace(np.min(Y), np.max(Y), 10), np.linspace(np.min(Z), np.max(Z), 10))
         px = np.full_like(py, slice_pos)
         fig_3d.add_trace(go.Surface(x=px, y=py, z=pz, opacity=0.3, colorscale='Reds', showscale=False))
@@ -302,7 +286,6 @@ with col_data:
         st.write("---")
         st.write("#### 📝 Verification")
         
-        # Smart Dropdowns
         sel_group = st.selectbox("Group", list(BRIDGE_SCHEMA.keys()), index=list(BRIDGE_SCHEMA.keys()).index(item['group']))
         avail_comps = list(BRIDGE_SCHEMA[sel_group].keys())
         sel_comp = st.selectbox("Component", avail_comps, index=avail_comps.index(item['comp']) if item['comp'] in avail_comps else 0)
