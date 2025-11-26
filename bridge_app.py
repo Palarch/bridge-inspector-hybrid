@@ -81,50 +81,113 @@ def get_bridge_data(uploaded_file, mock_item):
     # B. MOCKUP MODE (Detailed Structure v3.1)
     return generate_complex_structure(mock_item['type'], mock_item['comp'])
 
+# --- 3. STRUCTURE GENERATOR (HIGH DENSITY VERSION) ---
 def generate_complex_structure(defect_type, component_name):
-    points = []
-    # Box Generator
-    def add_box(xr, yr, zr, d=10):
-        xx=np.linspace(xr[0],xr[1],int((xr[1]-xr[0])*d)); yy=np.linspace(yr[0],yr[1],int((yr[1]-yr[0])*d)); zz=np.linspace(zr[0],zr[1],4)
-        X,Y=np.meshgrid(xx,yy); points.append(np.stack([X.flatten(),Y.flatten(),np.full_like(X,zr[0]).flatten()],axis=1))
-        X,Y=np.meshgrid(xx,yy); points.append(np.stack([X.flatten(),Y.flatten(),np.full_like(X,zr[1]).flatten()],axis=1))
-        X,Z=np.meshgrid(xx,zz); points.append(np.stack([X.flatten(),np.full_like(X,yr[0]).flatten(),Z.flatten()],axis=1))
-        X,Z=np.meshgrid(xx,zz); points.append(np.stack([X.flatten(),np.full_like(X,yr[1]).flatten(),Z.flatten()],axis=1))
-
-    # Dimensions
-    L=12; W=8
+    points_list = []
     
-    # Build Components
-    add_box([0,L],[0,W],[0,0.2]) # Deck
-    for y in [2,4,6]: add_box([0,L],[y-0.25,y+0.25],[-1.2,0]) # Girders
-    for sx in [2,10]: 
-        add_box([sx-0.4,sx+0.4],[0.5,7.5],[-2.0,-1.2]) # Cap
-        for py in [2.5,5.5]: add_box([sx-0.3,sx+0.3],[py-0.3,py+0.3],[-5.0,-2.0]) # Pier
+    # ฟังก์ชันสร้างก้อนคอนกรีตแบบ "เนื้อแน่น" (Volumetric)
+    def add_dense_block(x_lim, y_lim, z_lim, density=3000):
+        # คำนวณปริมาตรเพื่อปรับจำนวนจุดให้อัตโนมัติ (ชิ้นใหญ่จุดเยอะ ชิ้นเล็กจุดน้อย)
+        vol = (x_lim[1]-x_lim[0]) * (y_lim[1]-y_lim[0]) * (z_lim[1]-z_lim[0])
+        n_points = int(density * vol * 5) # คูณ 5 เพื่ออัดจุดให้แน่นปึ้ก
+        
+        # ป้องกันไม่ให้จุดน้อยเกินไปสำหรับชิ้นส่วนเล็กๆ
+        if n_points < 500: n_points = 500
+            
+        # สุ่มจุดในปริมาตร (Uniform Distribution) ทำให้ดูเป็นเนื้อเดียวกันเหมือนสแกนจริง
+        xx = np.random.uniform(x_lim[0], x_lim[1], n_points)
+        yy = np.random.uniform(y_lim[0], y_lim[1], n_points)
+        zz = np.random.uniform(z_lim[0], z_lim[1], n_points)
+        
+        # เพิ่มจุดที่ผิวขอบ (Surface) เพื่อให้ขอบคมชัด
+        # (สร้างกล่องเปล่าครอบอีกที)
+        x_edge = np.linspace(x_lim[0], x_lim[1], 50)
+        y_edge = np.linspace(y_lim[0], y_lim[1], 50)
+        z_edge = np.linspace(z_lim[0], z_lim[1], 10)
+        
+        # Top/Bot Surface
+        Xg, Yg = np.meshgrid(x_edge, y_edge)
+        points_list.append(np.stack([Xg.flatten(), Yg.flatten(), np.full_like(Xg, z_lim[0]).flatten()], axis=1))
+        points_list.append(np.stack([Xg.flatten(), Yg.flatten(), np.full_like(Xg, z_lim[1]).flatten()], axis=1))
+        
+        # Add Volume Points
+        points_list.append(np.stack([xx, yy, zz], axis=1))
 
-    full = np.concatenate(points, axis=0)
-    X, Y, Z = full[:,0], full[:,1], full[:,2]
+    # --- Dimensions (ปรับให้สัดส่วนสมจริงขึ้น) ---
+    L = 12.0
+    W = 8.0
     
-    # Simulate Defect
-    Z += np.random.normal(0, 0.003, size=Z.shape)
+    # ระดับความสูง (Z Levels)
+    z_deck_top = 0.0
+    z_deck_bot = -0.3   # พื้นหนา 30cm
+    z_girder_bot = -1.5 # คานลึก 1.2m
+    z_cap_top = -1.5
+    z_cap_bot = -2.5    # Cap Beam หนา 1m
+    z_pier_bot = -6.0   # เสาสูง 3.5m
+
+    # --- 1. SUPERSTRUCTURE ---
+    # A. Deck (พื้นสะพาน) - แผ่นใหญ่
+    add_dense_block([0, L], [0, W], [z_deck_bot, z_deck_top], density=4000)
+    
+    # B. Girders (คานยาว) - 3 ตัว
+    girder_y = [2.0, 4.0, 6.0]
+    for y in girder_y:
+        # คาน I-Shape (จำลองด้วยกล่องสี่เหลี่ยมแต่หนาแน่น)
+        add_dense_block([0, L], [y-0.3, y+0.3], [z_girder_bot, z_deck_bot], density=3000)
+        
+    # C. Diaphragms (คานขวาง)
+    dia_x = [0.5, L/2, L-0.5]
+    for x in dia_x:
+        for i in range(len(girder_y)-1):
+            y1, y2 = girder_y[i], girder_y[i+1]
+            add_dense_block([x-0.15, x+0.15], [y1+0.3, y2-0.3], [z_girder_bot+0.3, z_deck_bot-0.1])
+
+    # --- 2. SUBSTRUCTURE ---
+    support_x = [2.0, 10.0]
+    for sx in support_x:
+        # D. Cap Beam (คานหัวเสา) - รับ Girder
+        add_dense_block([sx-0.6, sx+0.6], [0.5, W-0.5], [z_cap_bot, z_cap_top], density=5000)
+        
+        # E. Piers (เสาตอม่อ)
+        pier_y = [2.5, 5.5]
+        for py in pier_y:
+            add_dense_block([sx-0.4, sx+0.4], [py-0.4, py+0.4], [z_pier_bot, z_cap_bot], density=4000)
+
+    # Combine All
+    full_cloud = np.concatenate(points_list, axis=0)
+    X, Y, Z = full_cloud[:,0], full_cloud[:,1], full_cloud[:,2]
+    
+    # --- 3. DEFECT SIMULATION ---
+    # Add Noise (Texture)
+    Z += np.random.normal(0, 0.005, size=Z.shape)
+    
     ai_depth = 0.0
-    
     if defect_type != "No Defect":
         mask = np.zeros_like(Z, dtype=bool)
-        if component_name == "Deck":
-            mask = (Z>-0.1)&((X-6)**2+(Y-4)**2<2)
-            Z[mask] -= 0.025 # 25mm (>20mm Critical)
-        elif component_name == "Girder":
-            mask = (Z<-1.0)&(abs(Y-4)<0.3)&(abs(X-6)<0.3)
-            Z[mask] += 0.006 # 6mm crack
-        elif component_name == "Cap Beam":
-            mask = (abs(X-2)<0.5)&(Z>-2.0)&(Y<2.0)
-            Z[mask] -= 0.015 # 15mm
+        
+        if component_name == "Deck" and defect_type == "Spalling":
+            # หลุมบนพื้น
+            mask = (Z > z_deck_top - 0.1) & ((X-6)**2 + (Y-4)**2 < 2.5)
+            Z[mask] -= 0.15 # หลุมลึก
             
+        elif component_name == "Girder" and defect_type == "Crack":
+            # รอยร้าวกลางคานตัวกลาง
+            mask = (Z < z_girder_bot + 0.5) & (abs(Y-4.0) < 0.35) & (abs(X-6.0) < 0.2)
+            Z[mask] += 0.08 # นูนออกมา
+            
+        elif component_name == "Cap Beam" and defect_type == "Spalling":
+            # แตกที่หัวคาน Cap Beam
+            mask = (abs(X-2.0) < 0.7) & (Z > z_cap_bot) & (Y < 2.0)
+            Z[mask] -= 0.2
+            
+        # Calculate AI Depth
         if np.any(mask):
-            ai_depth = abs(np.min(Z[mask])-np.mean(Z[~mask])) if defect_type=="Spalling" else np.max(Z[mask])-np.mean(Z[~mask])
+            if defect_type == "Spalling":
+                ai_depth = abs(np.min(Z[mask]) - np.mean(Z[~mask]))
+            else:
+                ai_depth = np.max(Z[mask]) - np.mean(Z[~mask])
 
-    return X, Y, Z, ai_depth, "Mockup"
-
+    return X, Y, Z, ai_depth, "Mockup (High-Res)"
 # --- 4. UI SETUP ---
 if 'idx' not in st.session_state: st.session_state.idx = 0
 if 'results' not in st.session_state: st.session_state.results = []
@@ -182,17 +245,13 @@ with col_viz:
         fig_sec.update_layout(template='plotly_white', height=250, title=f"Section at X={slice_pos:.1f}m", yaxis_title="Z", xaxis_title="Y", margin=dict(t=30,b=0,l=0,r=0))
         st.plotly_chart(fig_sec, use_container_width=True)
 
-        # 2. 3D VISUALIZATION
-        fig_3d = go.Figure(data=[go.Scatter3d(x=X, y=Y, z=Z, mode='markers', marker=dict(size=2, color=Z, colorscale='Jet_r'))])
-        # Cutting Plane
-        py, pz = np.meshgrid(np.linspace(np.min(Y), np.max(Y), 10), np.linspace(np.min(Z), np.max(Z), 10))
-        px = np.full_like(py, slice_pos)
-        fig_3d.add_trace(go.Surface(x=px, y=py, z=pz, opacity=0.3, colorscale='Reds', showscale=False))
-        
-        fig_3d.update_layout(template='plotly_white', height=450, scene=dict(aspectmode='data'), margin=dict(t=0,b=0,l=0,r=0))
-        st.plotly_chart(fig_3d, use_container_width=True)
-    else:
-        st.warning("No Data points found to visualize.")
+       # 2. 3D VISUALIZATION
+    # ปรับ size=1.5 หรือ 2 และ opacity=0.8 ให้ดูมีมิติ
+    fig_3d = go.Figure(data=[go.Scatter3d(
+        x=X, y=Y, z=Z, 
+        mode='markers', 
+        marker=dict(size=1.5, color=Z, colorscale='Jet_r', opacity=0.8) 
+    )])
 
 with col_data:
     st.markdown("### 📊 Assessment")
