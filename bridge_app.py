@@ -4,196 +4,160 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
-# --- 1. CONFIG & SETUP ---
-st.set_page_config(page_title="Bridge Inspector Final", layout="wide")
+# --- 1. CONFIG & CSS ---
+st.set_page_config(page_title="Hybrid Bridge Inspector (Complete)", layout="wide")
 
-# CSS: Clean Light Mode
 st.markdown("""
 <style>
-    div[data-testid="stMetric"] {
-        background-color: #f8f9fa;
-        border: 1px solid #dee2e6;
-        padding: 10px;
-        border-radius: 8px;
-    }
-    h1, h2, h3 { color: #2c3e50; }
     .stApp { background-color: white; }
+    div[data-testid="stMetric"] { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding:10px;}
+    
+    /* Urgency Badges (ตามมาตรฐานรูปที่ 2) */
+    .urgency-1 { background-color: #dc3545; color: white; padding: 5px 12px; border-radius: 15px; font-weight: bold; }
+    .urgency-2 { background-color: #fd7e14; color: white; padding: 5px 12px; border-radius: 15px; font-weight: bold; }
+    .urgency-3 { background-color: #28a745; color: white; padding: 5px 12px; border-radius: 15px; font-weight: bold; }
+    
+    /* Mapping Arrow */
+    .arrow-box { font-size: 20px; text-align: center; margin: 10px 0; color: #6c757d; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. ADVANCED STRUCTURE GENERATOR (With Super/Sub Structure) ---
-def generate_complex_bridge(defect_type, component_group, component_name):
-    points = []
-    
-    # Helper: สร้างกล่องสี่เหลี่ยม
-    def add_box(x_range, y_range, z_range, density=12):
-        xx = np.linspace(x_range[0], x_range[1], int((x_range[1]-x_range[0])*density + 3))
-        yy = np.linspace(y_range[0], y_range[1], int((y_range[1]-y_range[0])*density + 3))
-        zz = np.linspace(z_range[0], z_range[1], int((z_range[1]-z_range[0])*density + 3))
-        
-        # Top/Bottom
-        X, Y = np.meshgrid(xx, yy)
-        points.append(np.stack([X.flatten(), Y.flatten(), np.full_like(X, z_range[0]).flatten()], axis=1))
-        points.append(np.stack([X.flatten(), Y.flatten(), np.full_like(X, z_range[1]).flatten()], axis=1))
-        # Sides
-        X, Z = np.meshgrid(xx, zz)
-        points.append(np.stack([X.flatten(), np.full_like(X, y_range[0]).flatten(), Z.flatten()], axis=1))
-        points.append(np.stack([X.flatten(), np.full_like(X, y_range[1]).flatten(), Z.flatten()], axis=1))
-        # Ends
-        Y, Z = np.meshgrid(yy, zz)
-        points.append(np.stack([np.full_like(Y, x_range[0]).flatten(), Y.flatten(), Z.flatten()], axis=1))
-        points.append(np.stack([np.full_like(Y, x_range[1]).flatten(), Y.flatten(), Z.flatten()], axis=1))
-
-    # Dimensions
-    bridge_len = 12.0; bridge_width = 8.0
-    z_deck_top=0.0; z_deck_bot=-0.25; z_girder_bot=-1.25
-    z_cap_top=-1.25; z_cap_bot=-2.0; z_pier_bot=-5.0
-    
-    num_girders = 3
-    girder_width = 0.5
-    girder_spacing = bridge_width / (num_girders + 1)
-    girder_y_centers = [girder_spacing * (i+1) for i in range(num_girders)]
-    support_x_locs = [2.0, 10.0] 
-
-    # --- Build Components ---
-    # 1. Deck
-    add_box([0, bridge_len], [0, bridge_width], [z_deck_bot, z_deck_top])
-    # 2. Girders
-    for gy in girder_y_centers:
-        add_box([0, bridge_len], [gy-0.25, gy+0.25], [z_girder_bot, z_deck_bot])
-    # 3. Diaphragms
-    for dx in [0.5, bridge_len/2, bridge_len-0.5]:
-        for i in range(num_girders - 1):
-            add_box([dx-0.15, dx+0.15], [girder_y_centers[i]+0.25, girder_y_centers[i+1]-0.25], [z_girder_bot+0.2, z_deck_bot-0.2])
-    # 4. Cap Beam & Piers
-    for sx in support_x_locs:
-        add_box([sx-0.4, sx+0.4], [0.5, bridge_width-0.5], [z_cap_bot, z_cap_top]) # Cap
-        for py in [bridge_width*0.3, bridge_width*0.7]:
-            add_box([sx-0.3, sx+0.3], [py-0.3, py+0.3], [z_pier_bot, z_cap_bot]) # Pier
-
-    full_cloud = np.concatenate(points, axis=0)
-    X, Y, Z = full_cloud[:,0], full_cloud[:,1], full_cloud[:,2]
-    
-    # --- Defects ---
-    Z += np.random.normal(0, 0.005, size=Z.shape)
-    ai_depth = 0.0
-    ai_status = "Safe"
-    mask = np.zeros_like(Z, dtype=bool)
+# --- 2. HYBRID LOGIC ENGINE (Standard Compliance) ---
+def calculate_hybrid_assessment(defect_type, measured_depth, component_name):
+    # STAGE 1: DOH Detection (5-0 Scale)
+    doh_rating = 5 # Default Good
     
     if defect_type != "No Defect":
-        if component_name == "Deck":
-            mask = (Z > z_deck_top - 0.05) & ((X - 6)**2 + (Y - 4)**2 < 2)
-            if defect_type == "Spalling": Z[mask] -= 0.15
-            elif defect_type == "Crack": Z[mask] -= 0.05
-        elif component_name == "Girder":
-            mask = (Z < z_girder_bot + 0.2) & (abs(Y - girder_y_centers[1]) < 0.25) & (abs(X - 6) < 0.2)
-            if defect_type == "Crack": Z[mask] += 0.1
-        elif component_name == "Cap Beam":
-            mask = (abs(X - support_x_locs[0]) < 0.5) & (Z > z_cap_bot) & (Y < 1.0)
-            if defect_type == "Spalling": Z[mask] -= 0.2
+        if defect_type == "Spalling": # Threshold ตามรูป 4 (>20mm = Rating 1)
+            if measured_depth > 0.020: doh_rating = 1
+            elif measured_depth > 0.010: doh_rating = 2
+            elif measured_depth > 0.005: doh_rating = 3
+            else: doh_rating = 4
+        elif defect_type == "Crack":
+            if measured_depth > 0.005: doh_rating = 1
+            elif measured_depth > 0.003: doh_rating = 2
+            elif measured_depth > 0.001: doh_rating = 3
+            else: doh_rating = 4
+        elif defect_type == "Corrosion":
+             if measured_depth > 0.05: doh_rating = 2
+             else: doh_rating = 3
 
-        if np.any(mask):
-            ai_depth = np.max(Z[mask]) - np.mean(Z[~mask]) if defect_type == "Crack" else abs(np.min(Z[mask]) - np.mean(Z[~mask]))
+    # STAGE 2: Mapping (Invert Scale)
+    mapping_table = {5:1, 4:2, 3:3, 2:4, 1:5, 0:5}
+    cv_score = mapping_table.get(doh_rating, 1)
+
+    # STAGE 3: Evaluation (Pellegrini)
+    # Component Weight
+    weight = 1.0
+    if component_name in ["Girder", "Pier", "Cap Beam"]:
+        weight = 1.5 # Primary Member
     
-    if ai_depth > 0.15: ai_status = "Need Repair"
-    elif ai_depth > 0.05: ai_status = "Monitor"
+    priority_score = cv_score * weight
+    
+    # Action Plan
+    if priority_score >= 6.0:
+        return doh_rating, cv_score, weight, "Urgency 1 (High)", "ซ่อมทันที (Repair Immediately)", "urgency-1"
+    elif priority_score >= 3.0:
+        return doh_rating, cv_score, weight, "Urgency 2 (Medium)", "ซ่อมระยะสั้น (Short-term Repair)", "urgency-2"
+    else:
+        return doh_rating, cv_score, weight, "Urgency 3 (Low)", "เฝ้าระวัง (Monitor)", "urgency-3"
 
-    return X, Y, Z, ai_depth, ai_status
+# --- 3. DATA HANDLER (Real File OR Mockup) ---
+def get_bridge_data(uploaded_file, mock_item):
+    if uploaded_file is not None:
+        # A. FILE UPLOAD MODE
+        try:
+            df = pd.read_csv(uploaded_file)
+            df.columns = [c.lower() for c in df.columns]
+            if {'x','y','z'}.issubset(df.columns):
+                if len(df) > 50000: df = df.sample(50000) # Downsample
+                
+                X, Y, Z = df['x'].values, df['y'].values, df['z'].values
+                # Simple AI for file
+                ai_d = abs(np.min(Z) - np.mean(Z)) if len(Z) > 0 else 0
+                return X, Y, Z, ai_d, "Real File"
+        except: pass
 
-# --- 3. SESSION ---
+    # B. MOCKUP MODE (Detailed Structure v3.1)
+    return generate_complex_structure(mock_item['type'], mock_item['comp'])
+
+def generate_complex_structure(defect_type, component_name):
+    points = []
+    # Box Generator
+    def add_box(xr, yr, zr, d=10):
+        xx=np.linspace(xr[0],xr[1],int((xr[1]-xr[0])*d)); yy=np.linspace(yr[0],yr[1],int((yr[1]-yr[0])*d)); zz=np.linspace(zr[0],zr[1],4)
+        X,Y=np.meshgrid(xx,yy); points.append(np.stack([X.flatten(),Y.flatten(),np.full_like(X,zr[0]).flatten()],axis=1))
+        X,Y=np.meshgrid(xx,yy); points.append(np.stack([X.flatten(),Y.flatten(),np.full_like(X,zr[1]).flatten()],axis=1))
+        X,Z=np.meshgrid(xx,zz); points.append(np.stack([X.flatten(),np.full_like(X,yr[0]).flatten(),Z.flatten()],axis=1))
+        X,Z=np.meshgrid(xx,zz); points.append(np.stack([X.flatten(),np.full_like(X,yr[1]).flatten(),Z.flatten()],axis=1))
+
+    # Dimensions
+    L=12; W=8
+    
+    # Build Components
+    add_box([0,L],[0,W],[0,0.2]) # Deck
+    for y in [2,4,6]: add_box([0,L],[y-0.25,y+0.25],[-1.2,0]) # Girders
+    for sx in [2,10]: 
+        add_box([sx-0.4,sx+0.4],[0.5,7.5],[-2.0,-1.2]) # Cap
+        for py in [2.5,5.5]: add_box([sx-0.3,sx+0.3],[py-0.3,py+0.3],[-5.0,-2.0]) # Pier
+
+    full = np.concatenate(points, axis=0)
+    X, Y, Z = full[:,0], full[:,1], full[:,2]
+    
+    # Simulate Defect
+    Z += np.random.normal(0, 0.003, size=Z.shape)
+    ai_depth = 0.0
+    
+    if defect_type != "No Defect":
+        mask = np.zeros_like(Z, dtype=bool)
+        if component_name == "Deck":
+            mask = (Z>-0.1)&((X-6)**2+(Y-4)**2<2)
+            Z[mask] -= 0.025 # 25mm (>20mm Critical)
+        elif component_name == "Girder":
+            mask = (Z<-1.0)&(abs(Y-4)<0.3)&(abs(X-6)<0.3)
+            Z[mask] += 0.006 # 6mm crack
+        elif component_name == "Cap Beam":
+            mask = (abs(X-2)<0.5)&(Z>-2.0)&(Y<2.0)
+            Z[mask] -= 0.015 # 15mm
+            
+        if np.any(mask):
+            ai_depth = abs(np.min(Z[mask])-np.mean(Z[~mask])) if defect_type=="Spalling" else np.max(Z[mask])-np.mean(Z[~mask])
+
+    return X, Y, Z, ai_depth, "Mockup"
+
+# --- 4. UI SETUP ---
 if 'idx' not in st.session_state: st.session_state.idx = 0
 if 'results' not in st.session_state: st.session_state.results = []
 
 mock_data = [
-    {"id": "SP-01", "group": "Superstructure", "comp": "Deck", "type": "Spalling", "loc": "Mid-span"},
-    {"id": "SP-02", "group": "Superstructure", "comp": "Girder", "type": "Crack", "loc": "G2 Mid-span"},
-    {"id": "SP-03", "group": "Superstructure", "comp": "Diaphragm", "type": "No Defect", "loc": "End Diaphragm"},
-    {"id": "SB-01", "group": "Substructure", "comp": "Cap Beam", "type": "Spalling", "loc": "Pier Cap 1"},
-    {"id": "SB-02", "group": "Substructure", "comp": "Pier", "type": "No Defect", "loc": "Pier 1"},
+    {"id":"C1", "comp":"Deck", "group":"Superstructure", "type":"Spalling", "loc":"Mid-span"},
+    {"id":"C2", "comp":"Girder", "group":"Superstructure", "type":"Crack", "loc":"G2 Beam"},
+    {"id":"C3", "comp":"Cap Beam", "group":"Substructure", "type":"Spalling", "loc":"Pier 1 Cap"},
 ]
 
-# --- 4. UI ---
-st.title("🌉 Bridge Inspector Final (v3.1)")
+# Sidebar
+st.sidebar.title("🛠️ Tools")
+uploaded_file = st.sidebar.file_uploader("Upload Point Cloud (.csv)", type=['csv'])
+if st.session_state.results:
+    df_ex = pd.DataFrame(st.session_state.results)
+    st.sidebar.download_button("📥 Backup CSV", df_ex.to_csv(index=False).encode('utf-8'), "backup.csv", "text/csv")
+
+# Main Page
+st.title("🌉 Hybrid Bridge Inspector v5.0")
+st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: 3D/2D Analysis + File Support")
 
 if st.session_state.idx >= len(mock_data):
-    st.success("✅ Completed!")
-    if st.session_state.results:
-        df = pd.DataFrame(st.session_state.results)
-        st.dataframe(df)
-        st.download_button("📥 Final CSV", df.to_csv(index=False).encode('utf-8'), "final.csv", "text/csv")
-    if st.button("Restart"): st.session_state.idx = 0; st.session_state.results = []; st.rerun()
+    st.success("Inspection Batch Completed!")
+    if st.session_state.results: st.dataframe(pd.DataFrame(st.session_state.results))
+    if st.button("Restart"): st.session_state.idx=0; st.session_state.results=[]; st.rerun()
     st.stop()
 
+# Load Data
 item = mock_data[st.session_state.idx]
-X, Y, Z, ai_d, ai_s = generate_complex_bridge(item['type'], item['group'], item['comp'])
+X, Y, Z, ai_depth, source = get_bridge_data(uploaded_file, item)
+
+# Calculate Hybrid Rating
+doh, cv, w, urgency, action, css = calculate_hybrid_assessment(item['type'], ai_depth, item['comp'])
 
 # Layout
-col_left, col_right = st.columns([2, 1])
-
-with col_left:
-    st.subheader(f"📍 Checking: {item['comp']} ({item['group']})")
-    
-    # --- 1. SECTION TOOL (RESTORED!) ---
-    st.markdown("##### ✂️ Cross-Section Analyzer")
-    slice_pos = st.slider("Station (X-Axis)", 0.0, 12.0, 6.0, 0.1)
-    
-    # Calculate Section
-    mask_slice = np.abs(X - slice_pos) < 0.15
-    y_slice = Y[mask_slice]
-    z_slice = Z[mask_slice]
-    
-    # 2D Section Plot
-    fig_sec = go.Figure()
-    fig_sec.add_trace(go.Scatter(
-        x=y_slice, y=z_slice, mode='markers',
-        marker=dict(size=4, color=z_slice, colorscale='Jet_r'),
-    ))
-    fig_sec.update_layout(
-        template='plotly_white', height=250, title=f"Section at X={slice_pos}m",
-        yaxis_title="Elevation (Z)", xaxis_title="Width (Y)", margin=dict(t=30,b=0,l=0,r=0)
-    )
-    st.plotly_chart(fig_sec, use_container_width=True)
-    
-    # --- 2. 3D MODEL ---
-    fig_3d = go.Figure(data=[go.Scatter3d(
-        x=X, y=Y, z=Z, mode='markers',
-        marker=dict(size=2, color=Z, colorscale='Jet_r', showscale=True)
-    )])
-    # Cutting Plane
-    py, pz = np.meshgrid(np.linspace(0, 8, 10), np.linspace(-5, 0, 10))
-    px = np.full_like(py, slice_pos)
-    fig_3d.add_trace(go.Surface(x=px, y=py, z=pz, opacity=0.3, colorscale='Reds', showscale=False))
-    
-    fig_3d.update_layout(
-        template='plotly_white', height=500, margin=dict(t=0,b=0,l=0,r=0),
-        scene=dict(aspectmode='data', camera=dict(eye=dict(x=1.5, y=1.5, z=0.5)))
-    )
-    st.plotly_chart(fig_3d, use_container_width=True)
-
-with col_right:
-    st.markdown("### 🤖 AI Assessment")
-    c1, c2 = st.columns(2)
-    c1.metric("Severity", f"{ai_d:.3f} m")
-    col = "red" if ai_s == "Need Repair" else "orange" if ai_s == "Monitor" else "green"
-    c2.markdown(f"Status:<br><h3 style='color:{col}'>{ai_s}</h3>", unsafe_allow_html=True)
-    
-    with st.form("verify"):
-        st.markdown("### 👷‍♂️ Verification")
-        v_type = st.selectbox("Type", ["Spalling", "Crack", "Corrosion", "No Defect"], 
-                              index=["Spalling", "Crack", "Corrosion", "No Defect"].index(item['type']))
-        v_depth = st.number_input("Confirmed Depth", value=float(ai_d), format="%.3f")
-        v_status = st.radio("Status", ["Safe", "Monitor", "Need Repair"], 
-                            index=["Safe", "Monitor", "Need Repair"].index(ai_s), horizontal=True)
-        note = st.text_area("Notes")
-        
-        if st.form_submit_button("💾 Save & Next", type="primary"):
-            st.session_state.results.append({
-                "id": item['id'], "comp": item['comp'], "group": item['group'],
-                "type": v_type, "depth": v_depth, "status": v_status, "note": note,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-            st.session_state.idx += 1
-            st.rerun()
-
-if st.session_state.results:
-    st.sidebar.download_button("📥 Backup CSV", pd.DataFrame(st.session_state.results).to_csv(index=False).encode('utf-8'), "backup.csv", "text/csv")
+col_viz
