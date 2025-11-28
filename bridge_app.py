@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 # --- 1. CONFIG & CSS ---
-st.set_page_config(page_title="Hybrid Bridge Inspector v8.1", layout="wide")
+st.set_page_config(page_title="Hybrid Bridge Inspector v8.1 (Final)", layout="wide")
 
 st.markdown("""
 <style>
@@ -19,6 +19,8 @@ st.markdown("""
     .urgency-3 { background-color: #28a745; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; font-size: 16px; }
     
     .arrow-box { font-size: 24px; text-align: center; margin: 5px 0; color: #6c757d; }
+    .math-box { font-family: 'Courier New', monospace; background-color: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+    
     th { background-color: #f1f3f5; }
 </style>
 """, unsafe_allow_html=True)
@@ -93,7 +95,7 @@ def calculate_advanced_hybrid(defect_type, measured_val, component_name):
     else:
         return doh_rating, cv_score, w_comp, w_defect, priority_score, "Normal", "✅ ปกติ", "urgency-4"
 
-# --- 4. STRUCTURE GENERATOR (Cached) ---
+# --- 4. STRUCTURE GENERATOR ---
 @st.cache_data(show_spinner=False)
 def generate_complex_structure(defect_type, component_name, _seed=0):
     points_list = []
@@ -101,7 +103,7 @@ def generate_complex_structure(defect_type, component_name, _seed=0):
     def add_dense_block(x_lim, y_lim, z_lim, density=400): 
         vol = (x_lim[1]-x_lim[0]) * (y_lim[1]-y_lim[0]) * (z_lim[1]-z_lim[0])
         n_points = int(density * vol)
-        if n_points > 4000: n_points = 4000
+        if n_points > 4500: n_points = 4500
         if n_points < 200: n_points = 200
         xx = np.random.uniform(x_lim[0], x_lim[1], n_points)
         yy = np.random.uniform(y_lim[0], y_lim[1], n_points)
@@ -226,7 +228,6 @@ if st.session_state.idx >= len(st.session_state.mock_data):
 item = st.session_state.mock_data[st.session_state.idx]
 X, Y, Z, S, ai_depth, source_txt = get_inspection_data(input_method, file_input, item)
 
-# Use Manual measurement if set, else AI default
 current_depth = st.session_state.manual_depth if st.session_state.manual_depth is not None else ai_depth
 doh, cv, w_comp, w_defect, priority, urgency, action, css = calculate_advanced_hybrid(item['type'], current_depth, item['comp'])
 
@@ -259,9 +260,9 @@ with col_viz:
         fig_3d.update_layout(template='plotly_white', height=450, scene=dict(aspectmode='data'), margin=dict(t=0,b=0,l=0,r=0))
         st.plotly_chart(fig_3d, use_container_width=True)
         
-        # === MANUAL MEASUREMENT TOOL (New) ===
+        # === MANUAL MEASUREMENT TOOL ===
         st.markdown("##### 📐 Manual Measurement (2D Section)")
-        mask = np.abs(X - slice_pos) < 0.8 # Wide slice
+        mask = np.abs(X - slice_pos) < 0.8
         
         with st.expander("🛠️ Open Calipers (เครื่องมือวัด)", expanded=False):
             m1, m2 = st.columns(2)
@@ -283,7 +284,6 @@ with col_viz:
         # 2D Plot with Box
         fig_sec = go.Figure()
         fig_sec.add_trace(go.Scatter(x=Y[mask], y=Z[mask], mode='markers', marker=dict(size=5, color=Z[mask], colorscale='Jet_r', opacity=0.8), name="Points"))
-        # Add Measurement Box
         fig_sec.add_shape(type="rect", x0=y_meas[0], y0=z_meas[0], x1=y_meas[1], y1=z_meas[1], line=dict(color="Red", width=2, dash="dash"))
         
         fig_sec.update_layout(template='plotly_white', height=250, title=f"Section at X={slice_pos:.1f}m", margin=dict(t=30,b=0,l=0,r=0))
@@ -344,5 +344,5 @@ with col_data:
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
             st.session_state.idx += 1
-            st.session_state.manual_depth = None # Reset manual
+            st.session_state.manual_depth = None 
             st.rerun()
