@@ -6,7 +6,7 @@ import random
 from datetime import datetime
 
 # --- 1. CONFIG & CSS ---
-st.set_page_config(page_title="Hybrid Bridge Inspector v6.3", layout="wide")
+st.set_page_config(page_title="Hybrid Bridge Inspector v6.4", layout="wide")
 
 st.markdown("""
 <style>
@@ -18,6 +18,10 @@ st.markdown("""
     .urgency-3 { background-color: #28a745; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; }
     
     .arrow-box { font-size: 24px; text-align: center; margin: 5px 0; color: #6c757d; }
+    
+    /* Table Styling inside Expander */
+    thead tr th:first-child { display:none }
+    tbody th { display:none }
 </style>
 """, unsafe_allow_html=True)
 
@@ -197,8 +201,8 @@ if st.sidebar.button("🔄 Generate New Batch"):
 if st.session_state.results:
     st.sidebar.download_button("📥 Backup Data (CSV)", pd.DataFrame(st.session_state.results).to_csv(index=False).encode('utf-8-sig'), "backup_data.csv", "text/csv")
 
-st.title("🌉 Hybrid Bridge Inspector v6.3 (Final + Colorbar)")
-st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: Full Schema + Colorbar")
+st.title("🌉 Hybrid Bridge Inspector v6.4 (Explainable AI)")
+st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: Full Schema + Logic Explanation")
 
 if st.session_state.idx >= len(st.session_state.mock_data):
     st.success("✅ All items in batch inspected!")
@@ -240,18 +244,10 @@ with col_viz:
         fig_sec.update_layout(template='plotly_white', height=250, title=f"Section at X={slice_pos:.1f}m", margin=dict(t=30,b=0,l=0,r=0))
         st.plotly_chart(fig_sec, use_container_width=True)
 
-        # --- 3D GRAPH (With Vertical Colorbar) ---
         fig_3d = go.Figure(data=[go.Scatter3d(
             x=X, y=Y, z=Z, 
             mode='markers', 
-            marker=dict(
-                size=3, 
-                color=Z, 
-                colorscale='Jet_r', 
-                opacity=0.7,
-                showscale=True, # Show Colorbar
-                colorbar=dict(title="Elevation (m)", thickness=15, x=1.0) # Vertical Bar Settings
-            )
+            marker=dict(size=3, color=Z, colorscale='Jet_r', opacity=0.7, showscale=True, colorbar=dict(title="Elevation (m)", thickness=15, x=1.0))
         )])
         
         py, pz = np.meshgrid(np.linspace(np.min(Y), np.max(Y), 10), np.linspace(np.min(Z), np.max(Z), 10))
@@ -282,6 +278,48 @@ with col_data:
     
     st.markdown(f"""<div style="margin-top:15px; text-align:center;"><span class="{css}">{urgency}</span><br><h4>{action}</h4></div>""", unsafe_allow_html=True)
     
+    # --- NEW: EXPLAINABLE AI SECTION ---
+    with st.expander("📘 Reference Standards & Logic"):
+        t1, t2, t3 = st.tabs(["🇹🇭 DOH Criteria", "🔄 Mapping Logic", "🇪🇺 Pellegrini Algo"])
+        
+        with t1:
+            st.markdown("**เกณฑ์การให้คะแนนกรมทางหลวง (DOH Rating 5-0)**")
+            st.markdown("""
+            | Defect | Severity (Threshold) | Rating |
+            | :--- | :--- | :--- |
+            | **Cracking** | > 5 mm | **1 (Critical)** |
+            | | > 2 mm | **2 (Serious)** |
+            | | > 0.5 mm | **3 (Poor)** |
+            | **Spalling** | > 15 cm | **1 (Critical)** |
+            | | > 10 cm | **2 (Serious)** |
+            | | > 5 cm | **3 (Poor)** |
+            """)
+            
+        with t2:
+            st.markdown("**การแปลงค่ามาตรฐาน (Invert Scale)**")
+            st.write("แปลงจาก DOH (5=ดีมาก) เป็น Pellegrini CV (1=ดีมาก)")
+            st.markdown("""
+            | DOH Rating | ความหมาย | ➡️ | CV Score |
+            | :---: | :--- | :---: | :---: |
+            | **5** | Good | ➡️ | **1** |
+            | **4** | Fair | ➡️ | **2** |
+            | **3** | Poor | ➡️ | **3** |
+            | **2** | Serious | ➡️ | **4** |
+            | **1** | Critical | ➡️ | **5** |
+            """)
+            
+        with t3:
+            st.markdown("**สมการบริหารจัดการ (Management Algorithm)**")
+            st.latex(r''' Priority = CV \times Weight ''')
+            st.markdown("""
+            * **Primary Member (Weight 1.5):** Girder, Pier, Cap Beam, Footing
+            * **Secondary Member (Weight 1.0):** Deck, Diaphragm, Railing
+            """)
+            st.markdown("**Action Thresholds:**")
+            st.markdown("- **> 6.0:** 🔴 Repair Immediately")
+            st.markdown("- **3.0 - 5.0:** 🟠 Short-term Repair")
+            st.markdown("- **< 3.0:** 🟢 Monitor")
+
     with st.form("verify"):
         st.write("---")
         st.write("#### 📝 Verification")
