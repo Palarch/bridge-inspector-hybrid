@@ -5,17 +5,19 @@ import pandas as pd
 import random
 from datetime import datetime
 
-# --- 1. CONFIG & CSS ---
-st.set_page_config(page_title="Hybrid Bridge Inspector v6.4", layout="wide")
+# --- 1. CONFIG & CSS SETUP ---
+st.set_page_config(page_title="Hybrid Bridge Inspector v6.5 (Master)", layout="wide")
 
 st.markdown("""
 <style>
+    /* Clean Light Theme */
     .stApp { background-color: white; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding:10px; }
     
-    .urgency-1 { background-color: #dc3545; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; }
-    .urgency-2 { background-color: #fd7e14; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; }
-    .urgency-3 { background-color: #28a745; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; }
+    /* Urgency Badges */
+    .urgency-1 { background-color: #dc3545; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; font-size: 16px; }
+    .urgency-2 { background-color: #fd7e14; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; font-size: 16px; }
+    .urgency-3 { background-color: #28a745; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; font-size: 16px; }
     
     .arrow-box { font-size: 24px; text-align: center; margin: 5px 0; color: #6c757d; }
     
@@ -25,7 +27,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. BRIDGE DATA SCHEMA ---
+# --- 2. BRIDGE DATA SCHEMA (DATABASE) ---
 BRIDGE_SCHEMA = {
     "Superstructure": {
         "Deck": {"name_th": "พื้นสะพาน", "defects": ["Cracking", "Scaling", "Delamination", "Spalling", "Efflorescence", "Honeycomb", "Reinforcement Corrosion", "Pop-out", "Wear", "Collision Damage"]},
@@ -45,24 +47,25 @@ BRIDGE_SCHEMA = {
     }
 }
 
-# --- 3. HYBRID LOGIC ENGINE ---
+# --- 3. HYBRID LOGIC ENGINE (Aligned with DOH Standards) ---
 def calculate_hybrid_assessment(defect_type, measured_val, component_name):
-    doh_rating = 5 
+    # STAGE 1: DOH DETECTION (5-0 Scale)
+    doh_rating = 5 # Default Good
     
+    # Logic ตามเกณฑ์ใน Expander
     if "Crack" in defect_type:
-        if measured_val > 0.005: doh_rating = 1      
-        elif measured_val > 0.002: doh_rating = 2    
-        elif measured_val > 0.0005: doh_rating = 3   
-        elif measured_val > 0: doh_rating = 4
+        if measured_val > 0.005: doh_rating = 1      # > 5 mm
+        elif measured_val > 0.002: doh_rating = 2    # > 2 mm
+        elif measured_val > 0.0003: doh_rating = 3   # > 0.3 mm
+        elif measured_val > 0: doh_rating = 4        # < 0.3 mm
     elif any(x in defect_type for x in ["Spalling", "Scaling", "Honeycomb", "Potholing", "Scour"]):
-        if measured_val > 0.15: doh_rating = 1       
-        elif measured_val > 0.10: doh_rating = 2
-        elif measured_val > 0.05: doh_rating = 3
+        if measured_val > 0.15: doh_rating = 1       # > 15 cm
+        elif measured_val > 0.10: doh_rating = 2     # > 10 cm
+        elif measured_val > 0.025: doh_rating = 3    # > 2.5 cm
         elif measured_val > 0: doh_rating = 4
     elif any(x in defect_type for x in ["Movement", "Settlement", "Deflection", "Tilt"]):
-        if measured_val > 0.05: doh_rating = 1
-        elif measured_val > 0.025: doh_rating = 2
-        elif measured_val > 0.010: doh_rating = 3
+        if measured_val > 0.05: doh_rating = 1       # > 50 mm
+        elif measured_val > 0.01: doh_rating = 3     # > 10 mm
         elif measured_val > 0: doh_rating = 4
     else: 
         if measured_val > 0.1: doh_rating = 2
@@ -70,9 +73,11 @@ def calculate_hybrid_assessment(defect_type, measured_val, component_name):
 
     if defect_type == "No Defect": doh_rating = 5
 
+    # STAGE 2: MAPPING (Invert Scale)
     mapping_table = {5:1, 4:2, 3:3, 2:4, 1:5, 0:5}
     cv_score = mapping_table.get(doh_rating, 1)
 
+    # STAGE 3: EVALUATION (Pellegrini Weighting)
     weight = 1.0
     primary_comps = ["Girder", "Pier & Pier Wall", "Cap Beam", "Footing", "Bearing"]
     if any(p in component_name for p in primary_comps):
@@ -80,6 +85,7 @@ def calculate_hybrid_assessment(defect_type, measured_val, component_name):
     
     priority_score = cv_score * weight
     
+    # Determine Urgency
     if priority_score >= 6.0:
         return doh_rating, cv_score, weight, "Urgency 1 (High)", "ซ่อมทันที (Repair Immediately)", "urgency-1"
     elif priority_score >= 3.0:
@@ -87,22 +93,26 @@ def calculate_hybrid_assessment(defect_type, measured_val, component_name):
     else:
         return doh_rating, cv_score, weight, "Urgency 3 (Low)", "เฝ้าระวัง (Monitor)", "urgency-3"
 
-# --- 4. STRUCTURE GENERATOR ---
+# --- 4. STRUCTURE GENERATOR (Volumetric & Optimized) ---
 def generate_complex_structure(defect_type, component_name):
     points_list = []
     
+    # Function to create dense volume blocks
     def add_dense_block(x_lim, y_lim, z_lim, density=400): 
         vol = (x_lim[1]-x_lim[0]) * (y_lim[1]-y_lim[0]) * (z_lim[1]-z_lim[0])
         n_points = int(density * vol)
-        if n_points > 4000: n_points = 4000
+        
+        # Safety Limit to prevent WebGL Crash
+        if n_points > 4500: n_points = 4500
         if n_points < 200: n_points = 200
         
         xx = np.random.uniform(x_lim[0], x_lim[1], n_points)
         yy = np.random.uniform(y_lim[0], y_lim[1], n_points)
         zz = np.random.uniform(z_lim[0], z_lim[1], n_points)
         
-        xe = np.linspace(x_lim[0], x_lim[1], 8)
-        ye = np.linspace(y_lim[0], y_lim[1], 8)
+        # Add wireframe-like edges
+        xe = np.linspace(x_lim[0], x_lim[1], 10)
+        ye = np.linspace(y_lim[0], y_lim[1], 10)
         Xg, Yg = np.meshgrid(xe, ye)
         points_list.append(np.stack([Xg.flatten(), Yg.flatten(), np.full_like(Xg, z_lim[0]).flatten()], axis=1))
         points_list.append(np.stack([Xg.flatten(), Yg.flatten(), np.full_like(Xg, z_lim[1]).flatten()], axis=1))
@@ -111,6 +121,7 @@ def generate_complex_structure(defect_type, component_name):
     L = 12.0; W = 8.0
     z_deck_bot = -0.3; z_girder_bot = -1.5; z_cap_bot = -2.5; z_pier_bot = -6.0; z_foot_bot = -7.0
 
+    # Build Geometry
     add_dense_block([0, L], [0, W], [z_deck_bot, 0], density=600) # Deck
     for y in [2.0, 4.0, 6.0]:
         add_dense_block([0, L], [y-0.3, y+0.3], [z_girder_bot, z_deck_bot], density=500) # Girder
@@ -126,6 +137,7 @@ def generate_complex_structure(defect_type, component_name):
     full = np.concatenate(points_list, axis=0)
     X, Y, Z = full[:,0], full[:,1], full[:,2]
     
+    # Simulate Defect Visuals
     Z += np.random.normal(0, 0.005, size=Z.shape)
     ai_depth = 0.0
     
@@ -147,7 +159,7 @@ def generate_complex_structure(defect_type, component_name):
 
     return X, Y, Z, ai_depth
 
-# --- 5. DATA GENERATOR ---
+# --- 5. DATA GENERATOR (Mock Batch) ---
 def generate_mock_batch():
     batch = []
     for _ in range(5):
@@ -162,22 +174,20 @@ def generate_mock_batch():
         
         batch.append({
             "id": f"INS-{random.randint(100,999)}",
-            "group": group,
-            "comp": comp,
+            "group": group, "comp": comp,
             "comp_th": BRIDGE_SCHEMA[group][comp]["name_th"],
-            "type": defect,
-            "depth": depth
+            "type": defect, "depth": depth
         })
     return batch
 
-# --- 6. DATA HANDLER ---
+# --- 6. DATA HANDLER (File vs Mock) ---
 def get_inspection_data(uploaded_file, mock_item):
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
             df.columns = [c.lower() for c in df.columns]
             if {'x','y','z'}.issubset(df.columns):
-                if len(df) > 25000: df = df.sample(25000)
+                if len(df) > 30000: df = df.sample(30000)
                 X, Y, Z = df['x'].values, df['y'].values, df['z'].values
                 ai_d = abs(np.min(Z) - np.mean(Z)) if len(Z)>0 else 0
                 return X, Y, Z, ai_d, "Real File Uploaded"
@@ -191,6 +201,7 @@ if 'idx' not in st.session_state: st.session_state.idx = 0
 if 'results' not in st.session_state: st.session_state.results = []
 if 'mock_data' not in st.session_state: st.session_state.mock_data = generate_mock_batch()
 
+# SIDEBAR
 st.sidebar.title("🛠️ Control Panel")
 uploaded_file = st.sidebar.file_uploader("Upload Point Cloud (.csv)", type=['csv'])
 if st.sidebar.button("🔄 Generate New Batch"):
@@ -198,12 +209,15 @@ if st.sidebar.button("🔄 Generate New Batch"):
     st.session_state.idx = 0
     st.rerun()
 
+# Sidebar Backup
 if st.session_state.results:
-    st.sidebar.download_button("📥 Backup Data (CSV)", pd.DataFrame(st.session_state.results).to_csv(index=False).encode('utf-8-sig'), "backup_data.csv", "text/csv")
+    st.sidebar.download_button("📥 Backup Data (CSV)", pd.DataFrame(st.session_state.results).to_csv(index=False).encode('utf-8-sig'), "backup.csv", "text/csv")
 
-st.title("🌉 Hybrid Bridge Inspector v6.4 (Explainable AI)")
-st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: Full Schema + Logic Explanation")
+# MAIN CONTENT
+st.title("🌉 Hybrid Bridge Inspector v6.5")
+st.caption("Standards: DOH Detection ➔ Pellegrini Management | Feature: Full Schema + Real File Support")
 
+# End Screen
 if st.session_state.idx >= len(st.session_state.mock_data):
     st.success("✅ All items in batch inspected!")
     df_res = pd.DataFrame(st.session_state.results)
@@ -225,16 +239,19 @@ if st.session_state.idx >= len(st.session_state.mock_data):
             st.rerun()
     st.stop()
 
+# Processing
 item = st.session_state.mock_data[st.session_state.idx]
 X, Y, Z, ai_depth, source_txt = get_inspection_data(uploaded_file, item)
 doh, cv, w, urgency, action, css = calculate_hybrid_assessment(item['type'], ai_depth, item['comp'])
 
+# Layout
 col_viz, col_data = st.columns([1.8, 1])
 
 with col_viz:
     st.subheader(f"📍 {item['comp']} ({item['comp_th']})")
     st.caption(f"Defect: {item['type']} | Source: {source_txt}")
     
+    # 1. SLIDER & 2D (Fixed)
     st.markdown("##### ✂️ Cross-Section Analyzer")
     if len(X) > 0:
         slice_pos = st.slider("X-Axis Cut", float(np.min(X)), float(np.max(X)), float(np.mean(X)))
@@ -244,6 +261,7 @@ with col_viz:
         fig_sec.update_layout(template='plotly_white', height=250, title=f"Section at X={slice_pos:.1f}m", margin=dict(t=30,b=0,l=0,r=0))
         st.plotly_chart(fig_sec, use_container_width=True)
 
+        # 2. 3D GRAPH
         fig_3d = go.Figure(data=[go.Scatter3d(
             x=X, y=Y, z=Z, 
             mode='markers', 
@@ -278,46 +296,42 @@ with col_data:
     
     st.markdown(f"""<div style="margin-top:15px; text-align:center;"><span class="{css}">{urgency}</span><br><h4>{action}</h4></div>""", unsafe_allow_html=True)
     
-    # --- NEW: EXPLAINABLE AI SECTION ---
-    with st.expander("📘 Reference Standards & Logic"):
+    # --- UPGRADED EXPANDER: Detailed Reference ---
+    with st.expander("📘 Reference Standards (คู่มือเกณฑ์การประเมิน)"):
         t1, t2, t3 = st.tabs(["🇹🇭 DOH Criteria", "🔄 Mapping Logic", "🇪🇺 Pellegrini Algo"])
         
         with t1:
-            st.markdown("**เกณฑ์การให้คะแนนกรมทางหลวง (DOH Rating 5-0)**")
+            st.markdown("#### เกณฑ์กรมทางหลวง (DOH 5-0)")
             st.markdown("""
             | Defect | Severity (Threshold) | Rating |
-            | :--- | :--- | :--- |
-            | **Cracking** | > 5 mm | **1 (Critical)** |
-            | | > 2 mm | **2 (Serious)** |
-            | | > 0.5 mm | **3 (Poor)** |
-            | **Spalling** | > 15 cm | **1 (Critical)** |
-            | | > 10 cm | **2 (Serious)** |
-            | | > 5 cm | **3 (Poor)** |
+            | :--- | :--- | :---: |
+            | **1. รอยร้าว (Cracking)** | กว้าง < 0.3 mm | **4 (Fair)** |
+            | | กว้าง 0.3 - 2.0 mm | **3 (Poor)** |
+            | | กว้าง > 2.0 mm | **2 (Serious)** |
+            | | กว้าง > 5.0 mm | **1 (Critical)** |
+            |---|---|---|
+            | **2. การหลุดล่อน (Spalling)** | ลึก < 25 mm | **4 (Fair)** |
+            | | ลึก 25 - 50 mm | **3 (Poor)** |
+            | | พื้นที่กว้าง / เหล็กสนิม | **2 (Serious)** |
+            | | คอนกรีตกระเทาะหลุด | **1 (Critical)** |
             """)
-            
+            st.caption("*Rating 5 = Good/New")
+
         with t2:
-            st.markdown("**การแปลงค่ามาตรฐาน (Invert Scale)**")
-            st.write("แปลงจาก DOH (5=ดีมาก) เป็น Pellegrini CV (1=ดีมาก)")
-            st.markdown("""
-            | DOH Rating | ความหมาย | ➡️ | CV Score |
-            | :---: | :--- | :---: | :---: |
-            | **5** | Good | ➡️ | **1** |
-            | **4** | Fair | ➡️ | **2** |
-            | **3** | Poor | ➡️ | **3** |
-            | **2** | Serious | ➡️ | **4** |
-            | **1** | Critical | ➡️ | **5** |
-            """)
+            st.markdown("#### ตารางแปลงค่า (Invert Scale)")
+            st.write("DOH (5=ดี) ➡️ Pellegrini CV (1=ดี)")
+            st.markdown("| DOH Rating | 5 | 4 | 3 | 2 | 1 | 0 |")
+            st.markdown("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
+            st.markdown("| **CV Score** | **1** | **2** | **3** | **4** | **5** | **5** |")
             
         with t3:
-            st.markdown("**สมการบริหารจัดการ (Management Algorithm)**")
+            st.markdown("#### สมการบริหารจัดการ")
             st.latex(r''' Priority = CV \times Weight ''')
-            st.markdown("""
-            * **Primary Member (Weight 1.5):** Girder, Pier, Cap Beam, Footing
-            * **Secondary Member (Weight 1.0):** Deck, Diaphragm, Railing
-            """)
-            st.markdown("**Action Thresholds:**")
+            st.write("- **Weight 1.5:** Primary Members (Girder, Pier)")
+            st.write("- **Weight 1.0:** Secondary Members (Deck, Railing)")
+            st.markdown("**เกณฑ์ตัดสินใจ:**")
             st.markdown("- **> 6.0:** 🔴 Repair Immediately")
-            st.markdown("- **3.0 - 5.0:** 🟠 Short-term Repair")
+            st.markdown("- **3.0 - 5.5:** 🟠 Short-term Repair")
             st.markdown("- **< 3.0:** 🟢 Monitor")
 
     with st.form("verify"):
